@@ -1,10 +1,12 @@
 import os
 import io
+import cv2
 import base64
 import pytesseract 
 from gtts import gTTS
 import streamlit as st
 
+from ultralytics import YOLO
 from PIL import Image, ImageDraw 
 from langchain.chains import LLMChain 
 from langchain_core.messages import HumanMessage
@@ -16,6 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 model = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
+yolo_model = YOLO("yolov8n.pt") 
 
 # image to Base64 format
 def image_to_base64(image):
@@ -43,6 +46,26 @@ def text_to_speech(text):
     tts.write_to_fp(audio_bytes)
     audio_bytes.seek(0)
     return audio_bytes.getvalue()
+
+def run_ocr(image):
+    return pytesseract.image_to_string(image).strip()
+
+def detect_and_highlight_objects(image):
+    
+    image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    results = yolo_model(image_cv)
+    result = results[0]
+    annotated_frame = result.plot()
+    highlighted_image = Image.fromarray(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB))
+
+    objects = []
+    for box in result.boxes:
+        cls_id = int(box.cls[0].item())
+        label = yolo_model.names[cls_id]
+        bbox = box.xyxy[0].tolist()  # [x1, y1, x2, y2]
+        objects.append({"label": label, "bbox": bbox})
+
+    return highlighted_image, objects
 
 
 def main():
@@ -130,13 +153,44 @@ def main():
             with st.spinner('Generating scene description...'):
                 scene_prompt = 'Describe this image briefly'
                 scene_description = analyze_image(image, scene_prompt)
-                st.write(scene_description)
                 st.subheader('Scene Description')
                 st.success(scene_description)
                 st.audio(text_to_speech(scene_description), format='audio/mp3')
-
         
+        if style_button('📜 Extract Text', key='extract_text', active_button_key="extract_text"):
+            st.session_state.active_button="extract_text"
+            with st.spinner('Extracting text...'):
+                extracted_text = run_ocr(image)
+                if extracted_text:
+                    st.write("yes text extracted")
+                    st.session_state.extracted_text = extracted_text 
+                    st.subheader('Extracted Text')
+                    st.info(extracted_text) 
+                    st.audio(text_to_speech(extracted_text), format='audio/mp3')
+                else:
+                    no_text_message = 'No text detected in the image'
+                    st.session_state.extracted_text = no_text_message 
+                    st.subheader('No Text Detected')
+                    st.info(no_text_message) 
+                    st.audio(text_to_speech(no_text_message), format='audio/mp3')
+
+        if style_button('🚧 Detect Objects & Obstacles', key='detect_objects', active_button_key='detect_objects'):
+            st.session_state.active_button = 'detect_objects'
+            with st.spinner('Identify Objects & Obstacles...'):
+                obstacle_prompt = 'Identify objects or obstacles in this image and provide their position for safe navigation.'
+                obstacle_description = analyze_image(image, obstacle_prompt)
+                st.subheader("Objects & Obstacles Detected")
+                st.success(obstacle_description)
+                st.audio(text_to_speech(obstacle_description), format='audio/mp3')
+
+                highlighted_image, objects = detect_and_highlight_objects(image.copy())
+                st.image(highlighted_image, caption="Highlighted Image with Detected Objects", use_column_width=True)
+
+
+
+
+
+
 
 if __name__ == '__main__':
     main()
-    
