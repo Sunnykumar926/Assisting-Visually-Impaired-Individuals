@@ -2,6 +2,7 @@ import os
 import io
 import cv2
 import base64
+import numpy as np
 import pytesseract 
 from gtts import gTTS
 import streamlit as st
@@ -186,11 +187,14 @@ def main():
                 highlighted_image, objects = detect_and_highlight_objects(image.copy())
                 st.image(highlighted_image, caption="Highlighted Image with Detected Objects", use_column_width=True)
 
-
-
-
-
-
+        if style_button('🛠️ Personalized Assistance', key='personalized_assistance', active_button_key='personalized_assistance'):
+            st.session_state.active_button='personalized_assistance'
+            with st.spinner('Providing personalized guidance...'):
+                task_prompt = 'Provide task-specific guidance based on the content of this image in brief. Include item recognition, label reading, and any relevant context.'
+                assistance_description = analyze_image(image, task_prompt)
+                st.subheader("Personalized Assistance")
+                st.success(assistance_description)
+                st.audio(text_to_speech(assistance_description), format='audio/mp3')
 
 if __name__ == '__main__':
     main()
